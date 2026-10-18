@@ -11,6 +11,9 @@ final class StatusBarController: NSObject {
     private var cancellables: Set<AnyCancellable> = []
     private var localMonitor: Any?
     private var globalMonitor: Any?
+    /// When the panel was last closed. A click on the status item first makes the panel resign key
+    /// (closing it) and then fires the button action; without this the action would reopen it.
+    private var lastClose = Date.distantPast
 
     init(engine: FanEngine) {
         self.engine = engine
@@ -76,7 +79,11 @@ final class StatusBarController: NSObject {
     // MARK: Panel
 
     func togglePanel() {
-        if panel.isVisible { closePanel() } else { openPanel() }
+        if panel.isVisible {
+            closePanel()
+        } else if Date().timeIntervalSince(lastClose) > 0.4 {
+            openPanel()
+        }
     }
 
     private func openPanel() {
@@ -108,6 +115,7 @@ final class StatusBarController: NSObject {
     }
 
     private func panelDidClose() {
+        lastClose = Date()
         statusItem.button?.highlight(false)
         if let m = localMonitor { NSEvent.removeMonitor(m); localMonitor = nil }
         if let m = globalMonitor { NSEvent.removeMonitor(m); globalMonitor = nil }
