@@ -1,7 +1,9 @@
 import SwiftUI
 import FanKit
 
-/// Interactive temperature → RPM chart. Drag points to move them, double-click empty space to add one.
+/// Interactive temperature → fan level chart. The vertical axis is percent of the fan's own
+/// min…max range, with the matching RPM for the selected fan shown on the right.
+/// Drag points to move them, double-click empty space to add one, Delete removes the selection.
 struct CurveChart: View {
     @Binding var curve: FanCurve
     @Binding var selected: UUID?
@@ -12,8 +14,8 @@ struct CurveChart: View {
     let safetyTemp: Double
 
     private let tempRange: ClosedRange<Double> = 20...110
-    private var rpmRange: ClosedRange<Double> { 0...(ceil(maxRPM / 500) * 500 + 250) }
-    private let inset = EdgeInsets(top: 14, leading: 52, bottom: 30, trailing: 18)
+    private let levelRange: ClosedRange<Double> = 0...1
+    private let inset = EdgeInsets(top: 16, leading: 44, bottom: 30, trailing: 60)
 
     var body: some View {
         GeometryReader { geo in
@@ -38,7 +40,7 @@ struct CurveChart: View {
                                     move(p.id, to: v.location, in: plot)
                                 }
                         )
-                        .help("\(Int(p.temp)) °C → \(Int(p.rpm)) RPM")
+                        .help("\(Int(p.temp)) °C → \(Int(p.percent)) % (\(Int(FanCurve.rpm(forLevel: p.level, minRPM: minRPM, maxRPM: maxRPM))) RPM)")
                 }
             }
             .contentShape(Rectangle())
@@ -57,10 +59,9 @@ struct CurveChart: View {
     }
 
     private func add(at loc: CGPoint, in plot: CGRect) {
-        let t = (temp(atX: loc.x, in: plot)).rounded()
-        let r = ((rpm(atY: loc.y, in: plot)) / 10).rounded() * 10
-        let p = CurvePoint(temp: min(max(t, tempRange.lowerBound), tempRange.upperBound),
-                           rpm: min(max(r, minRPM), maxRPM))
+        let t = min(max(temp(atX: loc.x, in: plot).rounded(), tempRange.lowerBound), tempRange.upperBound)
+        let l = (level(atY: loc.y, in: plot) * 100).rounded() / 100
+        let p = CurvePoint(temp: t, level: l)
         curve.points.append(p)
         curve.normalize()
         selected = p.id
@@ -73,10 +74,8 @@ struct CurveChart: View {
         var lo = tempRange.lowerBound, hi = tempRange.upperBound
         if si > 0 { lo = sorted[si - 1].temp + 1 }
         if si < sorted.count - 1 { hi = sorted[si + 1].temp - 1 }
-        let t = min(max(temp(atX: loc.x, in: plot).rounded(), lo), hi)
-        let r = min(max((rpm(atY: loc.y, in: plot) / 10).rounded() * 10, minRPM), maxRPM)
-        curve.points[i].temp = t
-        curve.points[i].rpm = r
+        curve.points[i].temp = min(max(temp(atX: loc.x, in: plot).rounded(), lo), hi)
+        curve.points[i].level = min(max((level(atY: loc.y, in: plot) * 100).rounded() / 100, 0), 1)
     }
 
     // MARK: Coordinate mapping
@@ -84,17 +83,17 @@ struct CurveChart: View {
     private func x(_ t: Double, _ plot: CGRect) -> CGFloat {
         plot.minX + CGFloat((t - tempRange.lowerBound) / (tempRange.upperBound - tempRange.lowerBound)) * plot.width
     }
-    private func y(_ r: Double, _ plot: CGRect) -> CGFloat {
-        plot.maxY - CGFloat((r - rpmRange.lowerBound) / (rpmRange.upperBound - rpmRange.lowerBound)) * plot.height
+    private func y(_ level: Double, _ plot: CGRect) -> CGFloat {
+        plot.maxY - CGFloat(level) * plot.height
     }
     private func temp(atX px: CGFloat, in plot: CGRect) -> Double {
         tempRange.lowerBound + Double((px - plot.minX) / plot.width) * (tempRange.upperBound - tempRange.lowerBound)
     }
-    private func rpm(atY py: CGFloat, in plot: CGRect) -> Double {
-        rpmRange.lowerBound + Double((plot.maxY - py) / plot.height) * (rpmRange.upperBound - rpmRange.lowerBound)
+    private func level(atY py: CGFloat, in plot: CGRect) -> Double {
+        Double((plot.maxY - py) / plot.height)
     }
     private func position(of p: CurvePoint, in plot: CGRect) -> CGPoint {
-        CGPoint(x: x(p.temp, plot), y: y(p.rpm, plot))
+        CGPoint(x: x(p.temp, plot), y: y(p.level, plot))
     }
 
     // MARK: Drawing
@@ -103,15 +102,20 @@ struct CurveChart: View {
         let grid = Color.secondary.opacity(0.18)
         let axisText = Color.secondary
 
-        // Horizontal grid (RPM)
-        var r = rpmRange.lowerBound
-        while r <= rpmRange.upperBound {
-            let py = y(r, plot)
+        // Horizontal grid: every 10 % with a percent label on the left and the fan's RPM on the right.
+        for step in stride(from: 0, through: 100, by: 10) {
+            let l = Double(step) / 100
+            let py = y(l, plot)
             var line = Path(); line.move(to: CGPoint(x: plot.minX, y: py)); line.addLine(to: CGPoint(x: plot.maxX, y: py))
             ctx.stroke(line, with: .color(grid), lineWidth: 1)
-            ctx.draw(Text("\(Int(r))").font(.caption2).foregroundColor(axisText), at: CGPoint(x: plot.minX - 8, y: py), anchor: .trailing)
-            r += 1000
+            if step % 20 == 0 {
+                ctx.draw(Text("\(step) %").font(.caption2).foregroundColor(axisText), at: CGPoint(x: plot.minX - 6, y: py), anchor: .trailing)
+                let rpm = Int(FanCurve.rpm(forLevel: l, minRPM: minRPM, maxRPM: maxRPM))
+                ctx.draw(Text("\(rpm)").font(.caption2.monospacedDigit()).foregroundColor(axisText), at: CGPoint(x: plot.maxX + 6, y: py), anchor: .leading)
+            }
         }
+        ctx.draw(Text("RPM").font(.caption2).foregroundColor(axisText), at: CGPoint(x: plot.maxX + 6, y: plot.minY - 8), anchor: .leading)
+
         // Vertical grid (°C)
         var t = tempRange.lowerBound
         while t <= tempRange.upperBound {
@@ -122,28 +126,21 @@ struct CurveChart: View {
             t += 10
         }
 
-        // Fan min / max bands
-        let bandColor = Color.secondary.opacity(0.08)
-        ctx.fill(Path(CGRect(x: plot.minX, y: y(minRPM, plot), width: plot.width, height: plot.maxY - y(minRPM, plot))), with: .color(bandColor))
-        ctx.fill(Path(CGRect(x: plot.minX, y: plot.minY, width: plot.width, height: y(maxRPM, plot) - plot.minY)), with: .color(bandColor))
-        ctx.draw(Text("fan min").font(.caption2).foregroundColor(axisText), at: CGPoint(x: plot.maxX - 4, y: y(minRPM, plot) + 8), anchor: .trailing)
-        ctx.draw(Text("fan max").font(.caption2).foregroundColor(axisText), at: CGPoint(x: plot.maxX - 4, y: y(maxRPM, plot) - 8), anchor: .trailing)
-
         // Safety line
         if tempRange.contains(safetyTemp) {
             let px = x(safetyTemp, plot)
             var line = Path(); line.move(to: CGPoint(x: px, y: plot.minY)); line.addLine(to: CGPoint(x: px, y: plot.maxY))
             ctx.stroke(line, with: .color(.red.opacity(0.5)), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
-            ctx.draw(Text("max").font(.caption2).foregroundColor(.red), at: CGPoint(x: px, y: plot.minY - 6), anchor: .center)
+            ctx.draw(Text("max").font(.caption2).foregroundColor(.red), at: CGPoint(x: px, y: plot.minY - 8), anchor: .center)
         }
 
         // Curve
         let pts = curve.sortedPoints
         if let first = pts.first, let last = pts.last {
             var path = Path()
-            path.move(to: CGPoint(x: plot.minX, y: y(first.rpm, plot)))
+            path.move(to: CGPoint(x: plot.minX, y: y(first.level, plot)))
             for p in pts { path.addLine(to: position(of: p, in: plot)) }
-            path.addLine(to: CGPoint(x: plot.maxX, y: y(last.rpm, plot)))
+            path.addLine(to: CGPoint(x: plot.maxX, y: y(last.level, plot)))
 
             var fill = path
             fill.addLine(to: CGPoint(x: plot.maxX, y: plot.maxY))
@@ -155,7 +152,7 @@ struct CurveChart: View {
             ctx.stroke(path, with: .color(.accentColor), style: StrokeStyle(lineWidth: 2.5, lineJoin: .round))
         }
 
-        // Live marker: where the machine is right now
+        // Live marker: where this fan is right now
         if let lt = liveTemp {
             let px = x(min(max(lt, tempRange.lowerBound), tempRange.upperBound), plot)
             var line = Path(); line.move(to: CGPoint(x: px, y: plot.minY)); line.addLine(to: CGPoint(x: px, y: plot.maxY))
@@ -163,9 +160,10 @@ struct CurveChart: View {
             ctx.draw(Text(String(format: "now %.0f°", lt)).font(.caption2.weight(.semibold)).foregroundColor(.orange),
                      at: CGPoint(x: px, y: plot.minY + 8), anchor: .center)
             if let lr = liveRPM {
-                let dot = CGRect(x: px - 5, y: y(min(max(lr, rpmRange.lowerBound), rpmRange.upperBound), plot) - 5, width: 10, height: 10)
+                let ll = FanCurve.level(forRPM: lr, minRPM: minRPM, maxRPM: maxRPM)
+                let dot = CGRect(x: px - 5, y: y(ll, plot) - 5, width: 10, height: 10)
                 ctx.fill(Path(ellipseIn: dot), with: .color(.orange))
-                ctx.draw(Text("\(Int(lr)) RPM").font(.caption2).foregroundColor(.orange),
+                ctx.draw(Text("\(Int(lr)) RPM · \(Int(ll * 100)) %").font(.caption2).foregroundColor(.orange),
                          at: CGPoint(x: dot.midX + 10, y: dot.midY), anchor: .leading)
             }
         }

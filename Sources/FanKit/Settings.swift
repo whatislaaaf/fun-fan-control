@@ -56,12 +56,19 @@ public struct AppSettings: Codable, Equatable {
         curves[idx] = curve
     }
 
-    /// Makes sure there is a curve for every fan, seeding missing ones with the Balanced preset.
+    /// Makes sure there is a curve for every fan, seeding missing ones with the Balanced preset,
+    /// and converts curves saved by older versions (absolute RPM) into percent-of-range curves.
     public mutating func ensureCurves(for fans: [FanReading]) {
         for fan in fans where !curves.indices.contains(fan.index) {
-            curves.append(FanCurve.preset(.balanced, minRPM: fan.minRPM, maxRPM: fan.maxRPM))
+            curves.append(FanCurve.preset(.balanced))
+        }
+        for i in curves.indices where curves[i].needsMigration {
+            let fan = fans.first(where: { $0.index == i }) ?? fans.first
+            curves[i].migrate(minRPM: fan?.minRPM ?? 0, maxRPM: fan?.maxRPM ?? 1)
         }
     }
+
+    public var curvesNeedMigration: Bool { curves.contains { $0.needsMigration } }
 
     /// The temperature that drives the curve, according to `source`.
     public func sourceTemperature(from temps: [TemperatureReading]) -> Double? {

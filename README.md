@@ -14,6 +14,7 @@ it talks directly to the System Management Controller (SMC) through IOKit.
 - **Gear button** opens the *Fan Curves* window:
   - interactive curve editor: drag points, double-click to add, Delete to remove, presets (Quiet / Balanced / Cool to the touch)
   - a live orange marker showing where the machine is right now on the curve
+  - the curve is defined in percent of each fan's own min–max range, so a shared curve drives fans with different top speeds (e.g. 4296 vs 4744 RPM on an M1 Pro) at the same relative effort instead of the same RPM
   - one curve for all fans or a separate curve per fan
   - choose what drives the curve: CPU, GPU, the hottest of the two, or any custom set of sensors (e.g. a palm-rest sensor)
   - every temperature sensor the SMC exposes, grouped and live
@@ -51,8 +52,8 @@ Rebuilding the app replaces the helper, so you need to reinstall it after `make 
 ## How the control loop works
 
 Every *n* seconds (default 2) the app reads the fans and all temperature sensors, computes the
-curve-input temperature, interpolates the curve for each fan, limits how much the target may
-move per update, and sends the new target to the helper only if it changed by more than the
+curve-input temperature, interpolates the curve to a percent and converts it to RPM using each
+fan's own range, limits how much the target may move per update, and sends the new target to the helper only if it changed by more than the
 dead band. If macOS takes a fan back (after sleep, for example) the target is re-sent.
 
 Settings live in `~/Library/Application Support/Fun Fan Control/settings.json`.

@@ -132,8 +132,7 @@ final class FanEngine: ObservableObject {
     }
 
     func applyPreset(_ preset: FanCurve.Preset, to fan: Int) {
-        guard let f = fans.first(where: { $0.index == fan }) ?? fans.first else { return }
-        settings.setCurve(FanCurve.preset(preset, minRPM: f.minRPM, maxRPM: f.maxRPM), for: fan)
+        settings.setCurve(FanCurve.preset(preset), for: fan)
     }
 
     // MARK: Polling
@@ -150,7 +149,7 @@ final class FanEngine: ObservableObject {
             let source = settings.sourceTemperature(from: temps)
 
             var errorMessage: String?
-            if settings.controlEnabled, helperOK, let source, !settings.curves.isEmpty {
+            if settings.controlEnabled, helperOK, let source, !settings.curves.isEmpty, !settings.curvesNeedMigration {
                 errorMessage = self.drive(fans: fans, source: source, settings: settings)
             } else if self.forcing {
                 do { try HelperClient.setAuto(); self.forcing = false } catch let e { errorMessage = "\(e)" }
@@ -164,7 +163,7 @@ final class FanEngine: ObservableObject {
                 self.sourceTemp = source
                 self.lastUpdate = Date()
                 if let errorMessage { self.lastError = errorMessage } else if settings.controlEnabled { self.lastError = nil }
-                if self.settings.curves.count < fans.count || self.settings.curves.isEmpty {
+                if self.settings.curves.count < fans.count || self.settings.curves.isEmpty || self.settings.curvesNeedMigration {
                     self.settings.ensureCurves(for: fans)
                 }
             }
@@ -177,7 +176,9 @@ final class FanEngine: ObservableObject {
         var commands: [(fan: Int, rpm: Double)] = []
         for fan in fans {
             guard let curve = settings.curve(for: fan.index) else { continue }
-            var target = curve.rpm(at: source)
+            // The curve yields a percent of this fan's own range, so fans with different
+            // maximum speeds run at the same relative effort.
+            var target = curve.rpm(at: source, minRPM: fan.minRPM, maxRPM: fan.maxRPM)
             if source >= settings.safetyTemp { target = fan.maxRPM }
             target = min(max(target, fan.minRPM), fan.maxRPM)
 

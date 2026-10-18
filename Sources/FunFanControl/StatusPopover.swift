@@ -123,6 +123,8 @@ struct FanRow: View {
             .tint(fan.forced ? Color.accentColor : .secondary)
             HStack {
                 Text("\(Int(fan.minRPM)) – \(Int(fan.maxRPM))").font(.caption2).foregroundStyle(.secondary)
+                Text("· \(Int(FanCurve.level(forRPM: fan.actualRPM, minRPM: fan.minRPM, maxRPM: fan.maxRPM) * 100)) %")
+                    .font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
                 Spacer()
                 if fan.forced, let t = fan.targetRPM {
                     Text("target \(Int(t))").font(.caption2).foregroundStyle(.secondary)

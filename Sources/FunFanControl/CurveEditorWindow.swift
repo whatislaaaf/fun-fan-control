@@ -76,6 +76,8 @@ struct CurveTab: View {
                     Text("How to use").font(.caption.weight(.semibold))
                     Text("Drag a point to move it. Double-click empty space to add one. Select a point and press Delete to remove it. The orange marker shows where the machine is right now, so you can watch how a change feels before deciding.")
                         .font(.caption).foregroundStyle(.secondary)
+                    Text("The curve sets a percent of each fan's own speed range, so fans with different top speeds run at the same relative effort. " + fanRangesSummary)
+                        .font(.caption).foregroundStyle(.secondary).padding(.top, 4)
                     Text("Curve input: \(engine.settings.source.label) (\(engine.settings.aggregation.label.lowercased()))")
                         .font(.caption).foregroundStyle(.secondary).padding(.top, 4)
                     if !engine.settings.controlEnabled {
@@ -90,8 +92,10 @@ struct CurveTab: View {
 
     private var pointsTable: some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text("°C").frame(width: 60); Text("RPM").frame(width: 70)
+            HStack(spacing: 6) {
+                Text("°C").frame(width: 60)
+                Text("%").frame(width: 60)
+                Text("≈ RPM").frame(width: 60, alignment: .trailing)
             }
             .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
             ScrollView {
@@ -100,8 +104,11 @@ struct CurveTab: View {
                         HStack(spacing: 6) {
                             TextField("°C", value: $p.temp, format: .number.precision(.fractionLength(0)))
                                 .frame(width: 60)
-                            TextField("RPM", value: $p.rpm, format: .number.precision(.fractionLength(0)))
-                                .frame(width: 70)
+                            TextField("%", value: $p.percent, format: .number.precision(.fractionLength(0)))
+                                .frame(width: 60)
+                            Text("\(Int(FanCurve.rpm(forLevel: p.level, minRPM: fan?.minRPM ?? 0, maxRPM: fan?.maxRPM ?? 0)))")
+                                .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                                .frame(width: 60, alignment: .trailing)
                             Button {
                                 selected = p.id
                                 removeSelected()
@@ -120,6 +127,10 @@ struct CurveTab: View {
         }
     }
 
+    private var fanRangesSummary: String {
+        engine.fans.map { "\($0.name): \(Int($0.minRPM))–\(Int($0.maxRPM)) RPM" }.joined(separator: ", ")
+    }
+
     private func applyPreset(_ p: FanCurve.Preset) {
         engine.applyPreset(p, to: fanIndex)
         selected = nil
@@ -136,10 +147,9 @@ struct CurveTab: View {
 
     private func clampAndSort() {
         var c = curveBinding.wrappedValue
-        let lo = fan?.minRPM ?? 0, hi = fan?.maxRPM ?? 10000
         for i in c.points.indices {
             c.points[i].temp = min(max(c.points[i].temp, 0), 120)
-            c.points[i].rpm = min(max(c.points[i].rpm, lo), hi)
+            c.points[i].level = min(max(c.points[i].level, 0), 1)
         }
         c.normalize()
         curveBinding.wrappedValue = c
