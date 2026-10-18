@@ -57,11 +57,20 @@ struct StatusPopover: View {
     }
 
     private var modeBadge: some View {
-        let custom = engine.settings.controlEnabled && engine.helperInstalled
-        return Text(custom ? "Custom curve" : "Auto (macOS)")
+        let anyForced = engine.fans.contains { $0.forced }
+        let label: String
+        let color: Color
+        if engine.controlling {
+            label = "Custom curve"; color = .accentColor
+        } else if anyForced {
+            label = "Forced · not by this app"; color = .orange
+        } else {
+            label = "Auto (macOS)"; color = .secondary
+        }
+        return Text(label)
             .font(.caption2.weight(.semibold))
             .padding(.horizontal, 7).padding(.vertical, 3)
-            .background(custom ? Color.accentColor.opacity(0.2) : Color.secondary.opacity(0.15), in: Capsule())
+            .background(color.opacity(0.2), in: Capsule())
     }
 
     private var temperatureGrid: some View {
@@ -94,8 +103,10 @@ struct StatusPopover: View {
 
             if !engine.helperInstalled {
                 HStack(spacing: 6) {
-                    Text("Needs the root helper to change fan speed.")
-                        .font(.caption).foregroundStyle(.secondary)
+                    Text(engine.strayForcedFans
+                         ? "Fans are stuck in forced mode. Install the helper to release them."
+                         : "Needs the root helper to change fan speed.")
+                        .font(.caption).foregroundStyle(engine.strayForcedFans ? .orange : .secondary)
                     Button("Install…") { engine.installHelper() }
                         .controlSize(.small)
                 }

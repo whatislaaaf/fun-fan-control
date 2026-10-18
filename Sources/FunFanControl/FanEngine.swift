@@ -18,6 +18,11 @@ final class FanEngine: ObservableObject {
     @Published private(set) var smcError: String?
     @Published private(set) var lastError: String?
     @Published private(set) var lastUpdate: Date?
+    /// True when the SMC reports a fan in forced mode while this app is not driving it
+    /// (left over from a crash, an old build, or another tool) and we cannot release it.
+    @Published private(set) var strayForcedFans = false
+    /// True while this app is actively sending targets to the fans.
+    @Published private(set) var controlling = false
 
     @Published var settings: AppSettings {
         didSet {
@@ -149,11 +154,20 @@ final class FanEngine: ObservableObject {
             let source = settings.sourceTemperature(from: temps)
 
             var errorMessage: String?
+            var stray = false
+            let anyForced = fans.contains { $0.forced }
             if settings.controlEnabled, helperOK, let source, !settings.curves.isEmpty, !settings.curvesNeedMigration {
                 errorMessage = self.drive(fans: fans, source: source, settings: settings)
-            } else if self.forcing {
-                do { try HelperClient.setAuto(); self.forcing = false } catch let e { errorMessage = "\(e)" }
+            } else if self.forcing || anyForced {
+                // Not controlling, yet a fan is forced: hand it back to macOS if we can.
+                if helperOK {
+                    do { try HelperClient.setAuto(); self.forcing = false } catch let e { errorMessage = "\(e)" }
+                } else {
+                    stray = true
+                    errorMessage = "A fan is in forced mode but this app is not controlling it. Install the helper to return the fans to automatic control."
+                }
             }
+            let controlling = self.forcing
 
             DispatchQueue.main.async {
                 self.fans = fans
@@ -162,7 +176,9 @@ final class FanEngine: ObservableObject {
                 self.gpuTemp = gpu
                 self.sourceTemp = source
                 self.lastUpdate = Date()
-                if let errorMessage { self.lastError = errorMessage } else if settings.controlEnabled { self.lastError = nil }
+                self.strayForcedFans = stray
+                self.controlling = controlling
+                if let errorMessage { self.lastError = errorMessage } else { self.lastError = nil }
                 if self.settings.curves.count < fans.count || self.settings.curves.isEmpty || self.settings.curvesNeedMigration {
                     self.settings.ensureCurves(for: fans)
                 }

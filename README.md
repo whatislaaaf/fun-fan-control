@@ -46,8 +46,13 @@ ffc-helper status                              show fan modes and targets
 
 The first time you turn on *Custom fan curve*, click **Install helper** in the dropdown or in
 Settings. You'll be asked for your password once; the helper is then marked setuid root.
-Rebuilding the app replaces the helper, so you need to reinstall it after `make app`
-(or run `make install-helper`).
+`make app` stops a running copy of the app first (so it can hand the fans back to macOS)
+and keeps the installed helper when the helper binary has not changed. When it has changed
+you need to reinstall it, from the app or with `make install-helper`.
+
+If the app ever finds a fan in forced mode that it is not driving (after a crash, for
+example), it hands the fan back to macOS as soon as the helper is available, and the
+dropdown says "Forced · not by this app" until then.
 
 ## How the control loop works
 
