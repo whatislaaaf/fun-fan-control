@@ -60,6 +60,15 @@ public enum HelperClient {
         return out
     }
 
+    /// Forces the given fans to a 0 RPM target, which stops them.
+    @discardableResult
+    public static func setOff(_ fans: [Int]) throws -> String {
+        guard isInstalled() else { throw HelperError.notInstalled }
+        let (status, out) = run(helperURL.path, ["off"] + fans.map { String($0) })
+        if status != 0 { throw HelperError.failed(status, out) }
+        return out
+    }
+
     /// Returns every fan to macOS automatic control.
     @discardableResult
     public static func setAuto() throws -> String {

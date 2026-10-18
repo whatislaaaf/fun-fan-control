@@ -12,6 +12,8 @@ struct CurveChart: View {
     let liveTemp: Double?
     let liveRPM: Double?
     let safetyTemp: Double
+    /// When true a level of 0 % means the fan is switched off, and the axis says so.
+    var fanOffAtZero = false
 
     private let tempRange: ClosedRange<Double> = 20...110
     private let levelRange: ClosedRange<Double> = 0...1
@@ -109,9 +111,10 @@ struct CurveChart: View {
             var line = Path(); line.move(to: CGPoint(x: plot.minX, y: py)); line.addLine(to: CGPoint(x: plot.maxX, y: py))
             ctx.stroke(line, with: .color(grid), lineWidth: 1)
             if step % 20 == 0 {
-                ctx.draw(Text("\(step) %").font(.caption2).foregroundColor(axisText), at: CGPoint(x: plot.minX - 6, y: py), anchor: .trailing)
+                let off = fanOffAtZero && step == 0
+                ctx.draw(Text(off ? "off" : "\(step) %").font(.caption2).foregroundColor(axisText), at: CGPoint(x: plot.minX - 6, y: py), anchor: .trailing)
                 let rpm = Int(FanCurve.rpm(forLevel: l, minRPM: minRPM, maxRPM: maxRPM))
-                ctx.draw(Text("\(rpm)").font(.caption2.monospacedDigit()).foregroundColor(axisText), at: CGPoint(x: plot.maxX + 6, y: py), anchor: .leading)
+                ctx.draw(Text(off ? "off" : "\(rpm)").font(.caption2.monospacedDigit()).foregroundColor(axisText), at: CGPoint(x: plot.maxX + 6, y: py), anchor: .leading)
             }
         }
         ctx.draw(Text("RPM").font(.caption2).foregroundColor(axisText), at: CGPoint(x: plot.maxX + 6, y: plot.minY - 8), anchor: .leading)

@@ -42,8 +42,10 @@ final class FanEngine: ObservableObject {
     private var saveWork: DispatchWorkItem?
     private var observers: [NSObjectProtocol] = []
 
-    // Touched only on `queue`.
+    // Touched only on `queue`. `lastCommanded` holds 0 for a fan this app has switched off.
     private var lastCommanded: [Int: Double] = [:]
+    /// How many consecutive updates each fan's curve level has been exactly 0.
+    private var zeroLevelTicks: [Int: Int] = [:]
     private var forcing = false
     private var consecutiveFailures = 0
 
@@ -190,32 +192,47 @@ final class FanEngine: ObservableObject {
     /// Runs on `queue`. Returns an error message if the helper failed.
     private func drive(fans: [FanReading], source: Double, settings: AppSettings) -> String? {
         var commands: [(fan: Int, rpm: Double)] = []
+        var offCommands: [Int] = []
         for fan in fans {
             guard let curve = settings.curve(for: fan.index) else { continue }
             // The curve yields a percent of this fan's own range, so fans with different
             // maximum speeds run at the same relative effort.
-            var target = curve.rpm(at: source, minRPM: fan.minRPM, maxRPM: fan.maxRPM)
-            if source >= settings.safetyTemp { target = fan.maxRPM }
-            target = min(max(target, fan.minRPM), fan.maxRPM)
+            var level = curve.level(at: source)
+            if source >= settings.safetyTemp { level = 1 }
+            if level <= 0 { zeroLevelTicks[fan.index, default: 0] += 1 } else { zeroLevelTicks[fan.index] = 0 }
 
+            // Ramp from the last target, or from the fan's minimum when it is off (either
+            // switched off by this app, or idled by macOS, in which case it reads 0 RPM).
+            let base = max(lastCommanded[fan.index] ?? fan.actualRPM, fan.minRPM)
+            let previous = lastCommanded[fan.index]
+            let needsResend = !fan.forced   // macOS took the fan back (sleep, reset, ...)
+
+            // Fan off: only once the level has been exactly 0 for two consecutive updates and
+            // the fan has already ramped down to its minimum, so it never flaps around 0 %.
+            // It comes back on as soon as the level is above 0, ramping from the minimum.
+            if settings.allowFanOff, level <= 0, zeroLevelTicks[fan.index, default: 0] >= 2, base <= fan.minRPM {
+                if needsResend || previous != 0 { offCommands.append(fan.index) }
+                continue
+            }
+
+            var target = FanCurve.rpm(forLevel: level, minRPM: fan.minRPM, maxRPM: fan.maxRPM)
+            target = min(max(target, fan.minRPM), fan.maxRPM)
             // Limit how fast the fan is allowed to change speed so it never surges.
-            // A fan that macOS has switched off reads 0 RPM; ramp from its minimum instead.
-            let base = lastCommanded[fan.index] ?? max(fan.actualRPM, fan.minRPM)
             target = min(max(target, base - settings.maxStepDown), base + settings.maxStepUp)
             target = (target / 10).rounded() * 10
 
-            let previous = lastCommanded[fan.index]
-            let needsResend = !fan.forced   // macOS took the fan back (sleep, reset, ...)
             if needsResend || previous == nil || abs(target - previous!) >= settings.deadbandRPM {
                 commands.append((fan.index, target))
             }
         }
-        guard !commands.isEmpty else { return nil }
+        guard !commands.isEmpty || !offCommands.isEmpty else { return nil }
         do {
-            try HelperClient.setFans(commands)
+            if !commands.isEmpty { try HelperClient.setFans(commands) }
+            if !offCommands.isEmpty { try HelperClient.setOff(offCommands) }
             forcing = true
             consecutiveFailures = 0
             for c in commands { lastCommanded[c.fan] = c.rpm }
+            for f in offCommands { lastCommanded[f] = 0 }
             return nil
         } catch {
             consecutiveFailures += 1

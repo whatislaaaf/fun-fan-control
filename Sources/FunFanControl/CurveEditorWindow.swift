@@ -66,7 +66,8 @@ struct CurveTab: View {
                 maxRPM: fan?.maxRPM ?? 5000,
                 liveTemp: engine.sourceTemp,
                 liveRPM: fan?.actualRPM,
-                safetyTemp: engine.settings.safetyTemp
+                safetyTemp: engine.settings.safetyTemp,
+                fanOffAtZero: engine.settings.allowFanOff
             )
             .frame(minHeight: 280)
 
@@ -106,7 +107,7 @@ struct CurveTab: View {
                                 .frame(width: 60)
                             TextField("%", value: $p.percent, format: .number.precision(.fractionLength(0)))
                                 .frame(width: 60)
-                            Text("\(Int(FanCurve.rpm(forLevel: p.level, minRPM: fan?.minRPM ?? 0, maxRPM: fan?.maxRPM ?? 0)))")
+                            Text(engine.settings.allowFanOff && p.level <= 0 ? "off" : "\(Int(FanCurve.rpm(forLevel: p.level, minRPM: fan?.minRPM ?? 0, maxRPM: fan?.maxRPM ?? 0)))")
                                 .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                                 .frame(width: 60, alignment: .trailing)
                             Button {
@@ -211,6 +212,9 @@ struct SettingsTab: View {
             Section("Control") {
                 Toggle("Use custom fan curve", isOn: s.controlEnabled)
                     .disabled(!engine.helperInstalled)
+                Toggle("Allow fans to stop at 0 %", isOn: s.allowFanOff)
+                Text("With this on, a curve point at exactly 0 % switches the fan off instead of running it at its minimum speed. The fan comes back on, ramping from its minimum, as soon as the curve rises above 0 %.")
+                    .font(.caption).foregroundStyle(.secondary)
                 Picker("Curve input", selection: s.source) {
                     ForEach(TempSource.allCases) { Text($0.label).tag($0) }
                 }

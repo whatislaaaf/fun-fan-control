@@ -6,6 +6,7 @@ import FanKit
 
 let usage = """
 usage: ffc-helper set <fan> <rpm> [<fan> <rpm> ...]   force fans to a target RPM
+       ffc-helper off <fan> [<fan> ...]               force fans to a 0 RPM target (stops them)
        ffc-helper auto                                return all fans to automatic control
        ffc-helper status                              print fan modes and targets
 """
@@ -74,6 +75,20 @@ do {
             try setMode(fan, forced: true)
             try smc.writeDouble("F\(fan)Tg", clamped)
             print("fan \(fan): forced target=\(Int(clamped))")
+        }
+    case "off":
+        // Writes a 0 RPM target without clamping to F{n}Mn, the way macOS itself idles a fan.
+        let rest = Array(args.dropFirst())
+        guard !rest.isEmpty else { fail(usage, code: 2) }
+        var fans: [Int] = []
+        for s in rest {
+            guard let fan = Int(s), fan >= 0, fan < fanCount else { fail("invalid fan index \(s) (have \(fanCount) fans)", code: 2) }
+            fans.append(fan)
+        }
+        for fan in fans {
+            try setMode(fan, forced: true)
+            try smc.writeDouble("F\(fan)Tg", 0)
+            print("fan \(fan): forced target=0 (off)")
         }
     case "auto":
         for i in 0..<fanCount { try setMode(i, forced: false) }

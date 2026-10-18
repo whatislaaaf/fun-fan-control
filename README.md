@@ -20,6 +20,8 @@ it talks directly to the System Management Controller (SMC) through IOKit.
   - every temperature sensor the SMC exposes, grouped and live
   - smoothing (max RPM change per update, dead band) so fans never surge audibly
   - a safety threshold above which fans go to full speed regardless of the curve
+  - optionally let a fan stop completely when the curve is at 0 % (*Allow fans to stop at 0 %*
+    in Settings), the way macOS itself idles the fans, for a silent machine at low load
 - Fans are handed back to macOS automatic control when the app quits, on sleep, or when custom control is switched off.
 
 ## Build
@@ -36,10 +38,11 @@ make probe      # prints every fan and temperature key your Mac's SMC exposes
 ## The root helper
 
 Reading sensors needs no privileges, but *writing* a fan target does. All writes go through
-`ffc-helper`, a tiny separate binary inside the app bundle that only understands three commands:
+`ffc-helper`, a tiny separate binary inside the app bundle that only understands four commands:
 
 ```
 ffc-helper set <fan> <rpm> [<fan> <rpm> ...]   force fans to a target RPM (clamped to the fan's range)
+ffc-helper off <fan> [<fan> ...]               force fans to a 0 RPM target, which stops them
 ffc-helper auto                                hand every fan back to macOS
 ffc-helper status                              show fan modes and targets
 ```
@@ -61,6 +64,13 @@ curve-input temperature, interpolates the curve to a percent and converts it to 
 fan's own range, limits how much the target may move per update, and sends the new target to the helper only if it changed by more than the
 dead band. If macOS takes a fan back (after sleep, for example) the target is re-sent.
 
+With *Allow fans to stop at 0 %* on, a curve level of exactly 0 % means "off" rather than
+"minimum speed". To keep a fan from flapping around the threshold it is only switched off once
+the level has been 0 % for two consecutive updates and the fan has already ramped down to its
+minimum; it comes back on as soon as the level rises above 0 %, ramping up from its minimum.
+The safety threshold still overrides this. With the setting off, 0 % is the fan's minimum RPM
+as before.
+
 Settings live in `~/Library/Application Support/Fun Fan Control/settings.json`.
 
 ## Project layout
@@ -79,4 +89,8 @@ Resources/Info.plist   bundle metadata (LSUIElement so there is no Dock icon)
 - Forcing fans below what macOS would choose can let the chip run hotter; the safety threshold
   (default 98 °C) and the fan's own hardware limits still apply, but use some judgement.
 - Apple's firmware may ignore targets outside the fan's reported min/max; the helper clamps to that range.
+  The one exception is a target of exactly 0 RPM in forced mode (`F0Md=1`, `F0Tg=0`): on an M1 Pro
+  the firmware accepts it and the fan stops, which is what the `off` command and the
+  *Allow fans to stop at 0 %* setting use. A stopped fan takes roughly ten seconds to spin up
+  again, so the first update after "off" lags the curve a little.
 - The app is ad-hoc signed. Gatekeeper may warn if you copy it to another Mac.
