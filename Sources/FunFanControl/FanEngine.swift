@@ -210,7 +210,8 @@ final class FanEngine: ObservableObject {
             // Fan off: only once the level has been exactly 0 for two consecutive updates and
             // the fan has already ramped down to its minimum, so it never flaps around 0 %.
             // It comes back on as soon as the level is above 0, ramping from the minimum.
-            if settings.allowFanOff, level <= 0, zeroLevelTicks[fan.index, default: 0] >= 2, base <= fan.minRPM {
+            // (Targets are rounded to 10 RPM, so "at the minimum" allows for that.)
+            if settings.allowFanOff, level <= 0, zeroLevelTicks[fan.index, default: 0] >= 2, base < fan.minRPM + 10 {
                 if needsResend || previous != 0 { offCommands.append(fan.index) }
                 continue
             }
