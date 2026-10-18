@@ -16,8 +16,7 @@ struct CurveChart: View {
     var fanOffAtZero = false
 
     private let tempRange: ClosedRange<Double> = 20...110
-    private let levelRange: ClosedRange<Double> = 0...1
-    private let inset = EdgeInsets(top: 16, leading: 44, bottom: 30, trailing: 60)
+    private let inset = EdgeInsets(top: 22, leading: 44, bottom: 30, trailing: 58)
 
     var body: some View {
         GeometryReader { geo in
@@ -29,11 +28,13 @@ struct CurveChart: View {
             ZStack(alignment: .topLeading) {
                 Canvas { ctx, _ in draw(ctx, plot: plot) }
                 ForEach(curve.points) { p in
+                    let isSel = selected == p.id
                     Circle()
-                        .fill(selected == p.id ? Color.accentColor : Color(nsColor: .windowBackgroundColor))
-                        .overlay(Circle().stroke(Color.accentColor, lineWidth: 2))
-                        .frame(width: 13, height: 13)
-                        .contentShape(Circle().inset(by: -6))
+                        .fill(Theme.heat(p.level))
+                        .overlay(Circle().stroke(Color.white.opacity(0.95), lineWidth: isSel ? 3 : 2))
+                        .frame(width: isSel ? 16 : 13, height: isSel ? 16 : 13)
+                        .shadow(color: Theme.heat(p.level).opacity(isSel ? 0.8 : 0.45), radius: isSel ? 8 : 4)
+                        .contentShape(Circle().inset(by: -8))
                         .position(position(of: p, in: plot))
                         .gesture(
                             DragGesture(minimumDistance: 0)
@@ -43,13 +44,13 @@ struct CurveChart: View {
                                 }
                         )
                         .help("\(Int(p.temp)) °C → \(Int(p.percent)) % (\(Int(FanCurve.rpm(forLevel: p.level, minRPM: minRPM, maxRPM: maxRPM))) RPM)")
+                        .animation(.easeOut(duration: 0.15), value: isSel)
                 }
             }
             .contentShape(Rectangle())
             .onTapGesture(count: 2) { loc in add(at: loc, in: plot) }
             .onDeleteCommand { removeSelected() }
         }
-        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
     }
 
     // MARK: Editing
@@ -101,23 +102,31 @@ struct CurveChart: View {
     // MARK: Drawing
 
     private func draw(_ ctx: GraphicsContext, plot: CGRect) {
-        let grid = Color.secondary.opacity(0.18)
+        let grid = Color.primary.opacity(0.07)
         let axisText = Color.secondary
+        let heatGradient = Gradient(stops: [
+            .init(color: Theme.cool, location: 0),
+            .init(color: Theme.warm, location: 0.62),
+            .init(color: Theme.hot, location: 1),
+        ])
 
-        // Horizontal grid: every 10 % with a percent label on the left and the fan's RPM on the right.
+        // Plot background
+        ctx.fill(Path(roundedRect: plot.insetBy(dx: -6, dy: -6), cornerRadius: 10), with: .color(Color.primary.opacity(0.03)))
+
+        // Horizontal grid: every 10 %, labels every 20 % (percent left, this fan's RPM right).
         for step in stride(from: 0, through: 100, by: 10) {
             let l = Double(step) / 100
             let py = y(l, plot)
             var line = Path(); line.move(to: CGPoint(x: plot.minX, y: py)); line.addLine(to: CGPoint(x: plot.maxX, y: py))
-            ctx.stroke(line, with: .color(grid), lineWidth: 1)
+            ctx.stroke(line, with: .color(grid), style: StrokeStyle(lineWidth: 1, dash: step % 20 == 0 ? [] : [2, 4]))
             if step % 20 == 0 {
                 let off = fanOffAtZero && step == 0
-                ctx.draw(Text(off ? "off" : "\(step) %").font(.caption2).foregroundColor(axisText), at: CGPoint(x: plot.minX - 6, y: py), anchor: .trailing)
+                ctx.draw(Text(off ? "off" : "\(step) %").font(.caption2.weight(.medium)).foregroundColor(axisText), at: CGPoint(x: plot.minX - 8, y: py), anchor: .trailing)
                 let rpm = Int(FanCurve.rpm(forLevel: l, minRPM: minRPM, maxRPM: maxRPM))
-                ctx.draw(Text(off ? "off" : "\(rpm)").font(.caption2.monospacedDigit()).foregroundColor(axisText), at: CGPoint(x: plot.maxX + 6, y: py), anchor: .leading)
+                ctx.draw(Text(off ? "off" : "\(rpm)").font(.caption2.monospacedDigit()).foregroundColor(axisText), at: CGPoint(x: plot.maxX + 10, y: py), anchor: .leading)
             }
         }
-        ctx.draw(Text("RPM").font(.caption2).foregroundColor(axisText), at: CGPoint(x: plot.maxX + 6, y: plot.minY - 8), anchor: .leading)
+        ctx.draw(Text("RPM").font(.caption2.weight(.semibold)).foregroundColor(axisText), at: CGPoint(x: plot.maxX + 10, y: plot.minY - 12), anchor: .leading)
 
         // Vertical grid (°C)
         var t = tempRange.lowerBound
@@ -125,7 +134,7 @@ struct CurveChart: View {
             let px = x(t, plot)
             var line = Path(); line.move(to: CGPoint(x: px, y: plot.minY)); line.addLine(to: CGPoint(x: px, y: plot.maxY))
             ctx.stroke(line, with: .color(grid), lineWidth: 1)
-            ctx.draw(Text("\(Int(t))°").font(.caption2).foregroundColor(axisText), at: CGPoint(x: px, y: plot.maxY + 12), anchor: .center)
+            ctx.draw(Text("\(Int(t))°").font(.caption2.weight(.medium)).foregroundColor(axisText), at: CGPoint(x: px, y: plot.maxY + 13), anchor: .center)
             t += 10
         }
 
@@ -133,11 +142,11 @@ struct CurveChart: View {
         if tempRange.contains(safetyTemp) {
             let px = x(safetyTemp, plot)
             var line = Path(); line.move(to: CGPoint(x: px, y: plot.minY)); line.addLine(to: CGPoint(x: px, y: plot.maxY))
-            ctx.stroke(line, with: .color(.red.opacity(0.5)), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
-            ctx.draw(Text("max").font(.caption2).foregroundColor(.red), at: CGPoint(x: px, y: plot.minY - 8), anchor: .center)
+            ctx.stroke(line, with: .color(Theme.hot.opacity(0.6)), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+            ctx.draw(Text("full speed").font(.caption2.weight(.semibold)).foregroundColor(Theme.hot), at: CGPoint(x: px, y: plot.minY - 10), anchor: .center)
         }
 
-        // Curve
+        // Curve: area fill and stroke, both coloured by temperature along the x axis.
         let pts = curve.sortedPoints
         if let first = pts.first, let last = pts.last {
             var path = Path()
@@ -149,25 +158,29 @@ struct CurveChart: View {
             fill.addLine(to: CGPoint(x: plot.maxX, y: plot.maxY))
             fill.addLine(to: CGPoint(x: plot.minX, y: plot.maxY))
             fill.closeSubpath()
-            ctx.fill(fill, with: .linearGradient(
-                Gradient(colors: [Color.accentColor.opacity(0.25), Color.accentColor.opacity(0.02)]),
-                startPoint: CGPoint(x: 0, y: plot.minY), endPoint: CGPoint(x: 0, y: plot.maxY)))
-            ctx.stroke(path, with: .color(.accentColor), style: StrokeStyle(lineWidth: 2.5, lineJoin: .round))
+            let shading = GraphicsContext.Shading.linearGradient(
+                heatGradient, startPoint: CGPoint(x: plot.minX, y: 0), endPoint: CGPoint(x: plot.maxX, y: 0))
+            var area = ctx
+            area.opacity = 0.22
+            area.fill(fill, with: shading)
+            ctx.stroke(path, with: shading, style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
         }
 
-        // Live marker: where this fan is right now
+        // Live marker: where this fan is right now.
         if let lt = liveTemp {
             let px = x(min(max(lt, tempRange.lowerBound), tempRange.upperBound), plot)
             var line = Path(); line.move(to: CGPoint(x: px, y: plot.minY)); line.addLine(to: CGPoint(x: px, y: plot.maxY))
-            ctx.stroke(line, with: .color(.orange.opacity(0.8)), style: StrokeStyle(lineWidth: 1.5, dash: [5, 3]))
-            ctx.draw(Text(String(format: "now %.0f°", lt)).font(.caption2.weight(.semibold)).foregroundColor(.orange),
-                     at: CGPoint(x: px, y: plot.minY + 8), anchor: .center)
+            ctx.stroke(line, with: .color(Color.primary.opacity(0.35)), style: StrokeStyle(lineWidth: 1, dash: [3, 4]))
+            let label = Text(String(format: "now %.0f°", lt)).font(.caption2.weight(.bold)).foregroundColor(.primary)
+            ctx.draw(label, at: CGPoint(x: px, y: plot.minY - 10), anchor: .center)
             if let lr = liveRPM {
                 let ll = FanCurve.level(forRPM: lr, minRPM: minRPM, maxRPM: maxRPM)
-                let dot = CGRect(x: px - 5, y: y(ll, plot) - 5, width: 10, height: 10)
-                ctx.fill(Path(ellipseIn: dot), with: .color(.orange))
-                ctx.draw(Text("\(Int(lr)) RPM · \(Int(ll * 100)) %").font(.caption2).foregroundColor(.orange),
-                         at: CGPoint(x: dot.midX + 10, y: dot.midY), anchor: .leading)
+                let c = CGPoint(x: px, y: y(ll, plot))
+                ctx.fill(Path(ellipseIn: CGRect(x: c.x - 9, y: c.y - 9, width: 18, height: 18)), with: .color(Theme.heat(ll).opacity(0.25)))
+                ctx.fill(Path(ellipseIn: CGRect(x: c.x - 5, y: c.y - 5, width: 10, height: 10)), with: .color(.white))
+                ctx.fill(Path(ellipseIn: CGRect(x: c.x - 3.5, y: c.y - 3.5, width: 7, height: 7)), with: .color(Theme.heat(ll)))
+                let txt = lr < 1 ? "fan off" : "\(Int(lr)) RPM · \(Int(ll * 100)) %"
+                ctx.draw(Text(txt).font(.caption2.weight(.semibold)).foregroundColor(.primary), at: CGPoint(x: c.x + 12, y: c.y), anchor: .leading)
             }
         }
     }
