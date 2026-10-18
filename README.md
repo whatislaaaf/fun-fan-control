@@ -26,7 +26,7 @@ it talks directly to the System Management Controller (SMC) through IOKit.
 
 ## Build
 
-Requires Xcode (or the Command Line Tools) with Swift 5.9+ and macOS 14+.
+Requires Xcode (or the Command Line Tools) with Swift 5.9+ and macOS 15+.
 
 ```bash
 make app        # builds build/Fun Fan Control.app
