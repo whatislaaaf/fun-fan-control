@@ -199,7 +199,8 @@ final class FanEngine: ObservableObject {
             target = min(max(target, fan.minRPM), fan.maxRPM)
 
             // Limit how fast the fan is allowed to change speed so it never surges.
-            let base = lastCommanded[fan.index] ?? fan.actualRPM
+            // A fan that macOS has switched off reads 0 RPM; ramp from its minimum instead.
+            let base = lastCommanded[fan.index] ?? max(fan.actualRPM, fan.minRPM)
             target = min(max(target, base - settings.maxStepDown), base + settings.maxStepUp)
             target = (target / 10).rounded() * 10
 

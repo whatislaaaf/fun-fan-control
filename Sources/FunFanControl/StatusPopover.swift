@@ -123,9 +123,13 @@ struct FanRow: View {
             HStack(alignment: .firstTextBaseline) {
                 Text(fan.name).font(.subheadline)
                 Spacer()
-                Text("\(Int(fan.actualRPM))")
-                    .font(.title3.monospacedDigit().weight(.semibold))
-                Text("RPM").font(.caption).foregroundStyle(.secondary)
+                if fan.actualRPM < 1 {
+                    Text("off").font(.title3.weight(.semibold)).foregroundStyle(.secondary)
+                } else {
+                    Text("\(Int(fan.actualRPM))")
+                        .font(.title3.monospacedDigit().weight(.semibold))
+                    Text("RPM").font(.caption).foregroundStyle(.secondary)
+                }
             }
             Gauge(value: min(max(fan.actualRPM, fan.minRPM), fan.maxRPM), in: fan.minRPM...max(fan.maxRPM, fan.minRPM + 1)) {
                 EmptyView()
