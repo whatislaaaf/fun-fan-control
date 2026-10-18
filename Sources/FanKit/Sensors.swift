@@ -140,8 +140,10 @@ public final class SensorReader {
         }
     }
 
+    /// True only when the fan is under manual control (mode 1). Apple Silicon firmware uses
+    /// other non-zero mode values for its own states, e.g. 3 while it has idled the fan to 0 RPM.
     public static func isForced(smc: SMC, fan i: Int) -> Bool {
-        if smc.hasKey("F\(i)Md"), let md = try? smc.readDouble("F\(i)Md") { return md != 0 }
+        if smc.hasKey("F\(i)Md"), let md = try? smc.readDouble("F\(i)Md") { return Int(md) == 1 }
         if smc.hasKey("FS! "), let fs = try? smc.readDouble("FS! ") { return (Int(fs) & (1 << i)) != 0 }
         return false
     }

@@ -9,6 +9,7 @@ BIN = .build/$(CONFIG)
 all: app
 
 HELPER = $(APP)/Contents/MacOS/ffc-helper
+HELPER_STAMP = $(BUILD_DIR)/.helper-sha256
 
 # Stops a running copy of the app first so it can hand the fans back to macOS while the
 # installed (setuid) helper still exists, then rebuilds the bundle. The helper is only
@@ -18,10 +19,11 @@ app:
 	@if pgrep -x FunFanControl >/dev/null; then echo "Stopping running app…"; pkill -x FunFanControl; sleep 1.5; fi
 	mkdir -p "$(APP)/Contents/MacOS" "$(APP)/Contents/Resources"
 	cp "$(BIN)/FunFanControl" "$(APP)/Contents/MacOS/"
-	@if cmp -s "$(BIN)/ffc-helper" "$(HELPER)"; then \
+	@new=$$(shasum -a 256 "$(BIN)/ffc-helper" | cut -d' ' -f1); \
+	if [ -f "$(HELPER)" ] && [ -f "$(HELPER_STAMP)" ] && [ "$$new" = "$$(cat "$(HELPER_STAMP)")" ]; then \
 		echo "Helper unchanged, keeping installed copy"; \
 	else \
-		rm -f "$(HELPER)"; cp "$(BIN)/ffc-helper" "$(HELPER)"; \
+		rm -f "$(HELPER)"; cp "$(BIN)/ffc-helper" "$(HELPER)"; echo "$$new" > "$(HELPER_STAMP)"; \
 		echo "Helper replaced: run 'make install-helper' or click Install helper in the app"; \
 	fi
 	cp Resources/Info.plist "$(APP)/Contents/"
