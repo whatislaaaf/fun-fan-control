@@ -4,7 +4,6 @@ import FanKit
 /// The dropdown shown when the menu bar item is clicked.
 struct StatusPopover: View {
     @EnvironmentObject private var engine: FanEngine
-    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -127,8 +126,7 @@ struct StatusPopover: View {
     private var footer: some View {
         HStack {
             Button {
-                openWindow(id: "curves")
-                NSApp.activate(ignoringOtherApps: true)
+                CurvesWindowController.shared.show()
             } label: {
                 Label("Curves & settings", systemImage: "slider.horizontal.3")
                     .font(.caption.weight(.medium))
