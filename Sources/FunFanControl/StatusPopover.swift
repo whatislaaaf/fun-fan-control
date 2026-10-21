@@ -86,18 +86,21 @@ struct StatusPopover: View {
     private var controlCard: some View {
         Card {
             VStack(alignment: .leading, spacing: 8) {
-                Toggle(isOn: Binding(
-                    get: { engine.settings.controlEnabled },
-                    set: { engine.settings.controlEnabled = $0 }
-                )) {
+                HStack(alignment: .center, spacing: 8) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Custom fan curve").font(.subheadline.weight(.semibold))
                         Text(curveSummary).font(.caption2).foregroundStyle(.secondary)
                     }
+                    Spacer(minLength: 8)
+                    Toggle("Custom fan curve", isOn: Binding(
+                        get: { engine.settings.controlEnabled },
+                        set: { engine.settings.controlEnabled = $0 }
+                    ))
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+                    .disabled(!engine.helperInstalled)
                 }
-                .toggleStyle(.switch)
-                .controlSize(.small)
-                .disabled(!engine.helperInstalled)
 
                 if !engine.helperInstalled {
                     HStack(spacing: 8) {
