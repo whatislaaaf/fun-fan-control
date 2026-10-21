@@ -22,6 +22,8 @@ it talks directly to the System Management Controller (SMC) through IOKit.
   - a safety threshold above which fans go to full speed regardless of the curve
   - optionally let a fan stop completely when the curve is at 0 % (*Allow fans to stop at 0 %*
     in Settings), the way macOS itself idles the fans, for a silent machine at low load
+  - stop every fan while the lid is closed (*Switch fans off while the lid is closed* in
+    Settings, on by default), for a silent machine in clamshell mode
 - Fans are handed back to macOS automatic control when the app quits, on sleep, or when custom control is switched off.
 
 ## Build
@@ -70,6 +72,13 @@ the level has been 0 % for two consecutive updates and the fan has already rampe
 minimum; it comes back on as soon as the level rises above 0 %, ramping up from its minimum.
 The safety threshold still overrides this. With the setting off, 0 % is the fan's minimum RPM
 as before.
+
+With *Switch fans off while the lid is closed* on (the default), the app reads the lid state
+from IOKit (`AppleClamshellState`) on every update and, while custom control is on and the lid
+is closed, stops every fan immediately instead of following the curve. When the lid opens the
+fans come back on, ramping up from their minimum. The safety threshold still overrides this,
+and the dropdown shows "Lid closed · fans off" while it is active. On a Mac without a lid the
+setting has no effect.
 
 Settings live in `~/Library/Application Support/Fun Fan Control/settings.json`.
 

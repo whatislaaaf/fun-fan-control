@@ -383,6 +383,9 @@ struct SettingsTab: View {
                 Toggle("Allow fans to stop at 0 %", isOn: s.allowFanOff)
                 Text("With this on, a curve point at exactly 0 % switches the fan off instead of running it at its minimum speed. The fan comes back on, ramping from its minimum, as soon as the curve rises above 0 %.")
                     .font(.caption).foregroundStyle(.secondary)
+                Toggle("Switch fans off while the lid is closed", isOn: s.fansOffWhenLidClosed)
+                Text("When the lid is closed and the Mac stays awake (an external display, for example), every fan is stopped regardless of the curve. The fans ramp back up from their minimum when the lid opens. The safety threshold below still applies.")
+                    .font(.caption).foregroundStyle(.secondary)
                 Picker("Curve input", selection: s.source) {
                     ForEach(TempSource.allCases) { Text($0.label).tag($0) }
                 }

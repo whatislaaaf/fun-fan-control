@@ -23,6 +23,8 @@ final class FanEngine: ObservableObject {
     @Published private(set) var strayForcedFans = false
     /// True while this app is actively sending targets to the fans.
     @Published private(set) var controlling = false
+    /// True while the laptop lid is closed (false on machines without a lid sensor).
+    @Published private(set) var lidClosed = false
 
     @Published var settings: AppSettings {
         didSet {
@@ -154,12 +156,13 @@ final class FanEngine: ObservableObject {
             let cpu = temps.value(for: .cpu, aggregation: settings.aggregation)
             let gpu = temps.value(for: .gpu, aggregation: settings.aggregation)
             let source = settings.sourceTemperature(from: temps)
+            let lidClosed = Lid.isClosed() ?? false
 
             var errorMessage: String?
             var stray = false
             let anyForced = fans.contains { $0.forced }
             if settings.controlEnabled, helperOK, let source, !settings.curves.isEmpty, !settings.curvesNeedMigration {
-                errorMessage = self.drive(fans: fans, source: source, settings: settings)
+                errorMessage = self.drive(fans: fans, source: source, settings: settings, lidClosed: lidClosed)
             } else if self.forcing || anyForced {
                 // Not controlling, yet a fan is forced: hand it back to macOS if we can.
                 if helperOK {
@@ -180,6 +183,7 @@ final class FanEngine: ObservableObject {
                 self.lastUpdate = Date()
                 self.strayForcedFans = stray
                 self.controlling = controlling
+                self.lidClosed = lidClosed
                 if let errorMessage { self.lastError = errorMessage } else { self.lastError = nil }
                 if self.settings.curves.count < fans.count || self.settings.curves.isEmpty || self.settings.curvesNeedMigration {
                     self.settings.ensureCurves(for: fans)
@@ -190,11 +194,22 @@ final class FanEngine: ObservableObject {
 
     /// Computes a target for every fan from the curve and sends the ones that changed.
     /// Runs on `queue`. Returns an error message if the helper failed.
-    private func drive(fans: [FanReading], source: Double, settings: AppSettings) -> String? {
+    private func drive(fans: [FanReading], source: Double, settings: AppSettings, lidClosed: Bool) -> String? {
         var commands: [(fan: Int, rpm: Double)] = []
         var offCommands: [Int] = []
+        // Lid closed: every fan off, right away, unless the chip is past the safety threshold.
+        let lidOff = lidClosed && settings.fansOffWhenLidClosed && source < settings.safetyTemp
         for fan in fans {
             guard let curve = settings.curve(for: fan.index) else { continue }
+            let previous = lastCommanded[fan.index]
+            let needsResend = !fan.forced   // macOS took the fan back (sleep, reset, ...)
+
+            if lidOff {
+                zeroLevelTicks[fan.index] = 0
+                if needsResend || previous != 0 { offCommands.append(fan.index) }
+                continue
+            }
+
             // The curve yields a percent of this fan's own range, so fans with different
             // maximum speeds run at the same relative effort.
             var level = curve.level(at: source)
@@ -203,9 +218,8 @@ final class FanEngine: ObservableObject {
 
             // Ramp from the last target, or from the fan's minimum when it is off (either
             // switched off by this app, or idled by macOS, in which case it reads 0 RPM).
+            // After the lid reopens this also ramps the fans back up from their minimum.
             let base = max(lastCommanded[fan.index] ?? fan.actualRPM, fan.minRPM)
-            let previous = lastCommanded[fan.index]
-            let needsResend = !fan.forced   // macOS took the fan back (sleep, reset, ...)
 
             // Fan off: only once the level has been exactly 0 for two consecutive updates and
             // the fan has already ramped down to its minimum, so it never flaps around 0 %.
