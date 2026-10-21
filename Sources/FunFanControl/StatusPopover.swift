@@ -114,6 +114,7 @@ struct StatusPopover: View {
                     }
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
