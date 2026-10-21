@@ -51,7 +51,9 @@ struct StatusPopover: View {
 
     private var modePill: some View {
         let anyForced = engine.fans.contains { $0.forced }
-        if engine.controlling {
+        if engine.controlling, engine.lidClosed, engine.settings.fansOffWhenLidClosed {
+            return Pill(text: "Lid closed · fans off", color: .accentColor, filled: true)
+        } else if engine.controlling {
             return Pill(text: "Custom curve", color: .accentColor, filled: true)
         } else if anyForced {
             return Pill(text: "Forced · not by this app", color: .orange, filled: true)

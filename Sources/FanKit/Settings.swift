@@ -18,6 +18,8 @@ public struct AppSettings: Codable, Equatable {
     public var safetyTemp: Double = 98
     /// When on, a curve level of exactly 0 % switches the fan off instead of running it at its minimum.
     public var allowFanOff = false
+    /// When on, every fan is switched off while the lid is closed (the safety threshold still applies).
+    public var fansOffWhenLidClosed = true
     public var showTempInMenuBar = true
     public var showRPMInMenuBar = false
 
@@ -25,7 +27,8 @@ public struct AppSettings: Codable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case controlEnabled, sharedCurve, curves, source, customKeys, aggregation, intervalSeconds
-        case maxStepUp, maxStepDown, deadbandRPM, safetyTemp, allowFanOff, showTempInMenuBar, showRPMInMenuBar
+        case maxStepUp, maxStepDown, deadbandRPM, safetyTemp, allowFanOff, fansOffWhenLidClosed
+        case showTempInMenuBar, showRPMInMenuBar
     }
 
     public init(from decoder: Decoder) throws {
@@ -42,6 +45,7 @@ public struct AppSettings: Codable, Equatable {
         deadbandRPM = try c.decodeIfPresent(Double.self, forKey: .deadbandRPM) ?? deadbandRPM
         safetyTemp = try c.decodeIfPresent(Double.self, forKey: .safetyTemp) ?? safetyTemp
         allowFanOff = try c.decodeIfPresent(Bool.self, forKey: .allowFanOff) ?? allowFanOff
+        fansOffWhenLidClosed = try c.decodeIfPresent(Bool.self, forKey: .fansOffWhenLidClosed) ?? fansOffWhenLidClosed
         showTempInMenuBar = try c.decodeIfPresent(Bool.self, forKey: .showTempInMenuBar) ?? showTempInMenuBar
         showRPMInMenuBar = try c.decodeIfPresent(Bool.self, forKey: .showRPMInMenuBar) ?? showRPMInMenuBar
     }
